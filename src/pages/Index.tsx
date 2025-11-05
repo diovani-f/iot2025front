@@ -477,7 +477,11 @@ export default function Dashboard() {
           <div className="mx-auto max-w-4xl text-center">
             <h1 className="mb-6 text-4xl font-bold md:text-6xl lg:text-7xl">
               Plataforma de <br />
-              <span className="gradient-primary bg-clip-text"> Aplicações IoT</span>
+             <span className="bg-gradient-to-r from-sky-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent animate-gradient-x font-semibold">
+  Aplicações IoT
+</span>
+
+
             </h1>
             <p className="mb-8 text-lg text-muted-foreground md:text-xl">
               Gerencie dispositivos, processe dados e visualize informações em tempo real. 
