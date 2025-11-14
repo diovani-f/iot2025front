@@ -1,0 +1,6 @@
+APDS-9960 -> Arduino
+VCC       -> 3.3V
+GND       -> GND
+SDA       -> A4/SDA
+SCL       -> A5/SCL
+INT       -> D2

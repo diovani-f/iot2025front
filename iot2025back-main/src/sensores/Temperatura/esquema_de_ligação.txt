@@ -1,0 +1,4 @@
+DS18B20 -> Arduino
+VCC     -> 5V
+DATA    -> D2 (com resistor pull-up de 4.7kΩ para VCC)
+GND     -> GND

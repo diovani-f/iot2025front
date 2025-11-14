@@ -1,0 +1,31 @@
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Swagger cache
+swagger.json
+
+# IDE configs
+.vscode/
+.idea/
+
+# Build output (se usar algum bundler futuramente)
+dist/
+build/
+
+# Optional: arquivos temporários
+*.tmp
+*.bak

@@ -1,0 +1,5 @@
+MPU-6050 -> Arduino
+VCC      -> 3.3V
+GND      -> GND
+SCL      -> A5 (ou SCL)
+SDA      -> A4 (ou SDA)

@@ -1,0 +1,4 @@
+Relé -> Arduino
+VCC  -> 5V
+GND  -> GND
+IN   -> D8

@@ -1,0 +1,6 @@
+Joystick -> Arduino
+VCC      -> 5V
+GND      -> GND
+VRX      -> A0
+VRY      -> A1
+SW       -> D2

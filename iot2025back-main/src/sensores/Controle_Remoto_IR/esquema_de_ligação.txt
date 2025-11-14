@@ -1,0 +1,4 @@
+Receptor IR -> Arduino
+VCC     -> 5V
+GND     -> GND
+OUT     -> D11

@@ -1,0 +1,3 @@
+Teclado -> Arduino
+Linhas: L1-D9, L2-D8, L3-D7, L4-D6
+Colunas: C1-D5, C2-D4, C3-D3, C4-D2

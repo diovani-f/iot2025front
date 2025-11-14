@@ -1,0 +1,4 @@
+Servo SG90 -> Arduino
+VCC (vermelho) -> 5V
+GND (marrom)   -> GND
+Sinal (laranja) -> D9
