@@ -1,398 +1,326 @@
 ﻿import type { FormEvent } from "react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Bell, Zap, Clock, Trash2, Edit3 } from "lucide-react"
+import { Plus, Zap, Trash2, Edit3, RefreshCw } from "lucide-react"
 
 import { API_URL } from "@/lib/api"
 import { useDeviceRegistry } from "@/lib/device-registry"
-import {
-  extractPayloadMaps,
-  formatClock,
-  formatDateTime,
-  normalizeKey,
-  numericValue,
-  pickTimestamp,
-  type Reading,
-} from "@/lib/readings-utils"
 
-type Operador = ">" | "<" | ">=" | "<=" | "==" | "!="
-type AutomationType = "alert" | "schedule"
-
-type Automacao = {
-  id: string
+type Rule = {
+  _id?: string
   name: string
+  deviceId: string
+  sensor: {
+    tipo: string
+    pino: number
+    field: string
+  }
+  condition: {
+    operator: ">" | "<" | ">=" | "<=" | "==" | "!=" | "between"
+    value: number | string
+    value2?: number | string
+  }
+  action: {
+    tipo: string
+    pino: number
+    command: "ON" | "OFF"
+  }
+  enabled?: boolean
   description?: string
-  enabled: boolean
-  type: AutomationType
-  espId: string
-  metricKey?: string
-  operador?: Operador
-  threshold?: number
-  schedule?: { hh: number; mm: number }
-  lastTriggered?: number
 }
 
-type Evento = {
-  id: string
-  ts: number
-  espId: string
+type RuleForm = {
   name: string
-  text: string
+  deviceId: string
+  sensorTipo: string
+  sensorPino: string
+  sensorField: string
+  operator: ">" | "<" | ">=" | "<=" | "==" | "!="
+  value: string
+  actionTipo: string
+  actionPino: string
+  actionCommand: "ON" | "OFF"
+  enabled: boolean
+  description: string
 }
 
-const AUTOMATIONS_KEY = "iot2025::automations"
-const EVENTS_KEY = "iot2025::automation-events"
-
-const createAutomation = (espId = "", metricKey = ""): Automacao => ({
-  id: crypto.randomUUID(),
+const createEmptyForm = (): RuleForm => ({
   name: "",
-  description: "",
+  deviceId: "",
+  sensorTipo: "",
+  sensorPino: "",
+  sensorField: "",
+  operator: ">",
+  value: "",
+  actionTipo: "",
+  actionPino: "",
+  actionCommand: "ON",
   enabled: true,
-  type: "alert",
-  espId,
-  metricKey,
-  operador: ">",
-  threshold: 0,
-  schedule: { hh: 18, mm: 0 },
+  description: "",
 })
-
-const compareValues = (value: number, operator: Operador, threshold: number) => {
-  switch (operator) {
-    case ">":
-      return value > threshold
-    case "<":
-      return value < threshold
-    case ">=":
-      return value >= threshold
-    case "<=":
-      return value <= threshold
-    case "==":
-      return value === threshold
-    case "!=":
-      return value !== threshold
-    default:
-      return false
-  }
-}
-
-const resolveMetricValue = (flat: Record<string, unknown>, key: string | undefined) => {
-  if (!key) return undefined
-  if (key in flat) return flat[key]
-  const leaf = key.split(".").slice(-1)[0] ?? key
-  const normalized = normalizeKey(leaf)
-  const matched = Object.entries(flat).find(([candidate]) => normalizeKey(candidate.split(".").slice(-1)[0] ?? candidate) === normalized)
-  return matched?.[1]
-}
-
-const listNumericKeys = (reading?: Reading) => {
-  if (!reading) return [] as string[]
-  const { flat } = extractPayloadMaps(reading)
-  return Object.entries(flat)
-    .filter(([, value]) => Number.isFinite(numericValue(value)))
-    .map(([key]) => key)
-    .slice(0, 50)
-}
-
-const readLocal = <T,>(key: string, fallback: T) => {
-  if (typeof window === "undefined") return fallback
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw) as T
-    return parsed || fallback
-  } catch {
-    return fallback
-  }
-}
-
-const writeLocal = (key: string, value: unknown) => {
-  if (typeof window === "undefined") return
-  try {
-    if (!value || (Array.isArray(value) && !value.length)) {
-      localStorage.removeItem(key)
-    } else {
-      localStorage.setItem(key, JSON.stringify(value))
-    }
-  } catch (err) {
-    console.warn("falha ao persistir", err)
-  }
-}
 
 export default function Automation() {
   const { devices } = useDeviceRegistry()
-  const [automacoes, setAutomacoes] = useState<Automacao[]>(() => readLocal(AUTOMATIONS_KEY, []))
-  const [eventos, setEventos] = useState<Evento[]>(() => readLocal(EVENTS_KEY, []))
-  const [erro, setErro] = useState("")
-  const [abrirForm, setAbrirForm] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState<Automacao>(() => createAutomation())
-  const [metricas, setMetricas] = useState<string[]>([])
+  const [rules, setRules] = useState<Rule[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [message, setMessage] = useState("")
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<RuleForm>(createEmptyForm())
+  const [availableFields, setAvailableFields] = useState<string[]>([])
+  const [loadingFields, setLoadingFields] = useState(false)
 
-  const lastSeenRef = useRef<Record<string, number>>({})
-
-  // Load rules from backend on mount
+  // buscar campos disponíveis do sensor selecionado
   useEffect(() => {
-    const loadRules = async () => {
-      setLoading(true)
-      try {
-        const response = await fetch(`${API_URL}/api/rules`)
-        if (response.ok) {
-          const backendRules = await response.json() as any[]
-          // Merge backend rules with local rules
-          const merged = new Map<string, Automacao>()
-
-          // Add local rules first
-          automacoes.forEach(rule => merged.set(rule.id, rule))
-
-          // Add/update with backend rules
-          backendRules.forEach(rule => {
-            const automacao: Automacao = {
-              id: rule._id || rule.id || crypto.randomUUID(),
-              name: rule.name || "",
-              description: rule.description,
-              enabled: rule.enabled !== false,
-              type: rule.type || "alert",
-              espId: rule.espId || "",
-              metricKey: rule.metricKey,
-              operador: rule.operador,
-              threshold: rule.threshold,
-              schedule: rule.schedule,
-              lastTriggered: rule.lastTriggered,
-            }
-            merged.set(automacao.id, automacao)
-          })
-
-          setAutomacoes(Array.from(merged.values()))
-        }
-      } catch (err) {
-        console.warn("Erro ao carregar regras do backend:", err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadRules()
-  }, [])
-
-  useEffect(() => {
-    writeLocal(AUTOMATIONS_KEY, automacoes)
-  }, [automacoes])
-
-  useEffect(() => {
-    writeLocal(EVENTS_KEY, eventos.slice(0, 200))
-  }, [eventos])
-
-  const espAlvos = useMemo(() => {
-    const set = new Set<string>()
-    automacoes
-      .filter((automation) => automation.enabled && automation.espId)
-      .forEach((automation) => set.add(automation.espId))
-    return Array.from(set)
-  }, [automacoes])
-
-  useEffect(() => {
-    if (!abrirForm) return
-    if (!form.espId) {
-      setMetricas([])
+    if (!form.deviceId || !form.sensorTipo) {
+      setAvailableFields([])
       return
     }
-    const run = async () => {
+
+    const fetchFields = async () => {
+      setLoadingFields(true)
       try {
-        const response = await fetch(`${API_URL}/api/readings/${encodeURIComponent(form.espId)}/latest`)
-        if (!response.ok) {
-          setMetricas([])
-          return
-        }
-        const payload = (await response.json()) as Reading | undefined
-        setMetricas(listNumericKeys(payload))
-      } catch (err) {
-        console.warn("falha ao sugerir metricas", err)
-        setMetricas([])
-      }
-    }
-    run()
-  }, [abrirForm, form.espId])
-
-  useEffect(() => {
-    if (!espAlvos.length) return
-    const evaluate = async () => {
-      const updates = new Map<string, number>()
-      const novosEventos: Evento[] = []
-
-      for (const espId of espAlvos) {
-        try {
-          const response = await fetch(`${API_URL}/api/readings/${encodeURIComponent(espId)}/latest`)
-          if (!response.ok) continue
-          const payload = (await response.json()) as Reading | undefined
-          if (!payload) continue
-          const ts = pickTimestamp(payload, 0)
-          if (!ts || ts <= (lastSeenRef.current[espId] || 0)) continue
-          lastSeenRef.current[espId] = ts
-
-          const { flat } = extractPayloadMaps(payload)
-          const ativos = automacoes.filter((automation) => automation.enabled && automation.espId === espId)
-
-          for (const automation of ativos) {
-            if (automation.type === "alert") {
-              const rawValue = resolveMetricValue(flat, automation.metricKey)
-              const num = numericValue(rawValue)
-              if (!Number.isFinite(num) || automation.threshold === undefined || !automation.operador) continue
-              if (compareValues(num as number, automation.operador, automation.threshold)) {
-                const textValue = Number.isFinite(num) ? num.toString() : String(rawValue ?? "-")
-                novosEventos.push({
-                  id: crypto.randomUUID(),
-                  ts,
-                  espId,
-                  name: automation.name || "Automacao",
-                  text: `${automation.name || "Automacao"} disparada: ${automation.metricKey || "valor"} ${automation.operador} ${automation.threshold} (valor ${textValue})`,
-                })
-                updates.set(automation.id, ts)
-              }
-            } else if (automation.type === "schedule" && automation.schedule) {
-              const current = new Date(ts)
-              if (current.getHours() === automation.schedule.hh && current.getMinutes() === automation.schedule.mm) {
-                const previous = automation.lastTriggered || 0
-                if (!previous || ts - previous > 60_000) {
-                  novosEventos.push({
-                    id: crypto.randomUUID(),
-                    ts,
-                    espId,
-                    name: automation.name || "Agendamento",
-                    text: `${automation.name || "Agendamento"} executado as ${formatClock(ts)}`,
-                  })
-                  updates.set(automation.id, ts)
-                }
+        const response = await fetch(`${API_URL}/api/readings/${encodeURIComponent(form.deviceId)}/latest`)
+        if (response.ok) {
+          const data = await response.json()
+          // extrair campos numéricos do payload
+          const fields: string[] = []
+          const extractFields = (obj: any, prefix = "") => {
+            for (const key in obj) {
+              if (typeof obj[key] === "number") {
+                fields.push(prefix ? `${prefix}.${key}` : key)
+              } else if (typeof obj[key] === "object" && obj[key] !== null && !Array.isArray(obj[key])) {
+                extractFields(obj[key], prefix ? `${prefix}.${key}` : key)
               }
             }
           }
-        } catch (err) {
-          console.warn("falha ao avaliar automacoes", err)
+          extractFields(data)
+          setAvailableFields(fields)
         }
-      }
-
-      if (updates.size) {
-        setAutomacoes((current) =>
-          current.map((automation) =>
-            updates.has(automation.id)
-              ? { ...automation, lastTriggered: updates.get(automation.id) }
-              : automation
-          )
-        )
-      }
-      if (novosEventos.length) {
-        setEventos((current) => [...novosEventos.reverse(), ...current].slice(0, 200))
+      } catch (err) {
+        console.warn("Erro ao buscar campos:", err)
+      } finally {
+        setLoadingFields(false)
       }
     }
 
-    evaluate()
-    const timer = setInterval(evaluate, 5000)
-    return () => {
-      clearInterval(timer)
-    }
-  }, [espAlvos, automacoes])
+    fetchFields()
+  }, [form.deviceId, form.sensorTipo])
 
-  const abrirNovo = () => {
-    const firstDevice = devices[0]?.espId || ""
-    const sugestao = metricas.length ? metricas[0] : ""
-    setForm(createAutomation(firstDevice, sugestao))
-    setEditId(null)
-    setAbrirForm(true)
-    setErro("")
+  // carregar regras do backend
+  const loadRules = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/rules`)
+      if (response.ok) {
+        const data = await response.json()
+        setRules(data)
+      } else {
+        setError("Erro ao carregar regras")
+      }
+    } catch (err) {
+      console.error("Erro ao carregar regras:", err)
+      setError("Erro ao carregar regras")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const editar = (automation: Automacao) => {
-    setForm({ ...automation })
-    setEditId(automation.id)
-    setAbrirForm(true)
-    setErro("")
+  useEffect(() => {
+    loadRules()
+  }, [])
+
+  const openNew = () => {
+    setForm(createEmptyForm())
+    setEditingId(null)
+    setShowForm(true)
+    setError("")
+    setMessage("")
+  }
+
+  const edit = (rule: Rule) => {
+    setForm({
+      name: rule.name,
+      deviceId: rule.deviceId,
+      sensorTipo: rule.sensor.tipo,
+      sensorPino: String(rule.sensor.pino),
+      sensorField: rule.sensor.field,
+      operator: rule.condition.operator as any,
+      value: String(rule.condition.value),
+      actionTipo: rule.action.tipo,
+      actionPino: String(rule.action.pino),
+      actionCommand: rule.action.command,
+      enabled: rule.enabled !== false,
+      description: rule.description || "",
+    })
+    setEditingId(rule._id || null)
+    setShowForm(true)
+    setError("")
+    setMessage("")
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  const remover = async (automation: Automacao) => {
-    if (!window.confirm(`remover automacao "${automation.name || automation.id}"?`)) return
+  const remove = async (rule: Rule) => {
+    if (!window.confirm(`Remover regra "${rule.name}"?`)) return
 
-    // Remove from backend if it has an _id (backend rule)
     try {
-      const response = await fetch(`${API_URL}/api/rules/${automation.id}`, {
+      const response = await fetch(`${API_URL}/api/rules/${rule._id}`, {
         method: "DELETE",
       })
-      if (!response.ok) {
-        console.warn("Erro ao remover regra do backend:", response.status)
+      if (response.ok) {
+        setMessage("Regra removida com sucesso")
+        loadRules()
+      } else {
+        setError("Erro ao remover regra")
       }
     } catch (err) {
-      console.warn("Erro ao remover regra do backend:", err)
+      console.error("Erro ao remover regra:", err)
+      setError("Erro ao remover regra")
     }
 
-    // Remove from local state
-    setAutomacoes((current) => current.filter((item) => item.id !== automation.id))
+    setTimeout(() => {
+      setMessage("")
+      setError("")
+    }, 3000)
   }
 
-  const salvar = async (event: FormEvent<HTMLFormElement>) => {
+  const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!form.name.trim()) return setErro("informe um nome")
-    if (!form.espId.trim()) return setErro("selecione um dispositivo")
-    if (form.type === "alert") {
-      if (!form.metricKey?.trim()) return setErro("informe a metrica")
-      if (!form.operador) return setErro("selecione o operador")
-      if (typeof form.threshold !== "number" || Number.isNaN(form.threshold)) return setErro("informe o valor de limiar")
-    }
-    setErro("")
+    setError("")
+    setMessage("")
 
-    const rulePayload = {
-      name: form.name,
-      description: form.description,
+    if (!form.name.trim()) return setError("Informe um nome")
+    if (!form.deviceId.trim()) return setError("Selecione um dispositivo")
+    if (!form.sensorTipo.trim()) return setError("Informe o tipo do sensor")
+    if (!form.sensorPino.trim()) return setError("Informe o pino do sensor")
+    if (!form.sensorField.trim()) return setError("Informe o campo do sensor")
+    if (!form.value.trim()) return setError("Informe o valor de condição")
+    if (!form.actionTipo.trim()) return setError("Informe o tipo da ação")
+    if (!form.actionPino.trim()) return setError("Informe o pino da ação")
+
+    const payload: Omit<Rule, "_id"> = {
+      name: form.name.trim(),
+      deviceId: form.deviceId.trim(),
+      sensor: {
+        tipo: form.sensorTipo.trim(),
+        pino: Number(form.sensorPino),
+        field: form.sensorField.trim(),
+      },
+      condition: {
+        operator: form.operator,
+        value: isNaN(Number(form.value)) ? form.value : Number(form.value),
+      },
+      action: {
+        tipo: form.actionTipo.trim(),
+        pino: Number(form.actionPino),
+        command: form.actionCommand,
+      },
       enabled: form.enabled,
-      type: form.type,
-      espId: form.espId,
-      metricKey: form.metricKey,
-      operador: form.operador,
-      threshold: form.threshold,
-      schedule: form.schedule,
+      description: form.description.trim(),
     }
 
-    // Save to backend
     try {
-      const response = await fetch(`${API_URL}/api/rules`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rulePayload),
-      })
+      let response
+      if (editingId) {
+        // editar regra existente
+        response = await fetch(`${API_URL}/api/rules/${editingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      } else {
+        // criar nova regra
+        response = await fetch(`${API_URL}/api/rules`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      }
 
       if (response.ok) {
         const result = await response.json()
-        const newRule: Automacao = {
-          ...form,
-          id: result.rule?._id || result.rule?.id || form.id,
-        }
-
-        if (editId) {
-          setAutomacoes((current) => current.map((item) => (item.id === editId ? newRule : item)))
-        } else {
-          setAutomacoes((current) => [newRule, ...current])
-        }
+        setMessage(result.message || "Regra salva com sucesso")
+        setShowForm(false)
+        setEditingId(null)
+        loadRules()
       } else {
-        throw new Error("Falha ao salvar regra no backend")
+        const errorData = await response.json()
+        setError(errorData.error || "Erro ao salvar regra")
       }
     } catch (err) {
-      console.warn("Erro ao salvar regra no backend:", err)
-      setErro("Regra salva localmente, mas falhou ao sincronizar com backend")
-
-      // Fallback: save locally only
-      if (editId) {
-        setAutomacoes((current) => current.map((item) => (item.id === editId ? { ...form } : item)))
-      } else {
-        setAutomacoes((current) => [{ ...form, id: crypto.randomUUID() }, ...current])
-      }
+      console.error("Erro ao salvar regra:", err)
+      setError("Erro ao salvar regra")
     }
 
-    setAbrirForm(false)
-    setEditId(null)
+    setTimeout(() => {
+      setMessage("")
+      setError("")
+    }, 5000)
   }
 
-  const totalAtivas = automacoes.filter((automation) => automation.enabled).length
+  // get unique sensor and actuator components from devices
+  const sensorOptions: Array<{ tipo: string; pino: number; label: string }> = []
+  const actuatorOptions: Array<{ tipo: string; pino: number; label: string }> = []
+
+  if (form.deviceId) {
+    const device = devices.find((d) => d.espId === form.deviceId)
+    if (device) {
+      device.components?.forEach((comp) => {
+        const label = `${comp.label || comp.name || comp.model} (pino ${comp.pin})`
+        const tipo = (comp.type || "").toLowerCase()
+        const modelo = (comp.model || "").toLowerCase()
+
+        // lista de modelos conhecidos de atuadores
+        const modelosAtuadores = ["led", "rele", "motor", "motor_vibracao", "buzzer", "servo", "relay"]
+        const isAtuadorPorModelo = modelosAtuadores.some(m => modelo.includes(m))
+
+        // lista de modelos conhecidos de sensores
+        const modelosSensores = ["dht11", "dht22", "ds18b20", "hcsr04", "mpu6050", "apds9960", "bmp280", "ldr", "pir", "joystick"]
+        const isSensorPorModelo = modelosSensores.some(m => modelo.includes(m))
+
+        // determinar se é sensor ou atuador
+        const isSensor = tipo === "sensor" || isSensorPorModelo
+        const isAtuador =
+          tipo === "atuador" ||
+          tipo === "actuator" ||
+          tipo === "led" ||
+          tipo === "rele" ||
+          tipo === "motor" ||
+          tipo === "motor_vibracao" ||
+          isAtuadorPorModelo
+
+        if (isSensor && !isAtuador) {
+          sensorOptions.push({
+            tipo: comp.model || "",
+            pino: comp.pin || 0,
+            label,
+          })
+        } else if (isAtuador && !isSensor) {
+          actuatorOptions.push({
+            tipo: comp.model || "",
+            pino: comp.pin || 0,
+            label,
+          })
+        } else {
+          // se não conseguiu determinar ou se for ambíguo, adiciona em ambos
+          sensorOptions.push({
+            tipo: comp.model || "",
+            pino: comp.pin || 0,
+            label: `${label} [?]`,
+          })
+          actuatorOptions.push({
+            tipo: comp.model || "",
+            pino: comp.pin || 0,
+            label: `${label} [?]`,
+          })
+        }
+      })
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
@@ -400,78 +328,81 @@ export default function Automation() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-4xl font-bold text-transparent">
-              Configuracoes e Automacao
+              Configurações e Automação
             </h1>
-            <p className="mt-2 text-muted-foreground">Crie automacoes locais baseadas nas leituras disponiveis</p>
+            <p className="mt-2 text-muted-foreground">Crie regras de automação para seus dispositivos IoT</p>
           </div>
           <div className="flex gap-2">
-            <Button className="gap-2" onClick={abrirNovo} disabled={!devices.length}>
+            <Button variant="outline" className="gap-2" onClick={loadRules} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+            <Button className="gap-2" onClick={openNew} disabled={!devices.length}>
               <Plus className="h-4 w-4" />
-              Nova Automacao
+              Nova Regra
             </Button>
           </div>
         </div>
 
-        {!!erro && (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-destructive">{erro}</div>
+        {!!error && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-destructive">{error}</div>
+        )}
+        {!!message && (
+          <div className="rounded-lg border border-emerald-300/40 bg-emerald-200/20 p-3 text-emerald-700">{message}</div>
         )}
         {!devices.length && (
           <div className="rounded-lg border border-dashed p-4 text-center text-muted-foreground">
-            Cadastre ao menos um dispositivo para configurar automacoes.
+            Cadastre ao menos um dispositivo para configurar automações.
           </div>
         )}
 
-        {abrirForm && (
+        {showForm && (
           <Card className="border-primary/30 bg-card/60 p-6 backdrop-blur">
-            <form onSubmit={salvar} className="space-y-4">
-              <div className="flex items-center justify-between">
+            <form onSubmit={save} className="space-y-5">
+              <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-sm font-semibold text-muted-foreground">
-                    {editId ? "Editar automacao" : "Nova automacao"}
+                    {editingId ? "Editar regra" : "Nova regra"}
                   </div>
-                  <div className="text-xl font-bold">{form.name || "Sem titulo"}</div>
+                  <div className="text-xl font-bold">{form.name || "Sem título"}</div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <span className="text-sm text-muted-foreground">Ativa</span>
-                  <Switch checked={form.enabled} onCheckedChange={(value) => setForm((current) => ({ ...current, enabled: value }))} />
+                  <Switch
+                    checked={form.enabled}
+                    onCheckedChange={(value) => setForm((prev) => ({ ...prev, enabled: value }))}
+                  />
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground">Nome</label>
+                  <label className="text-xs font-semibold text-muted-foreground">Nome da Regra</label>
                   <input
                     className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    placeholder="ex.: alerta de temperatura"
+                    placeholder="ex.: Ligar LED acima de 15°C"
                     value={form.name}
-                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground">Tipo</label>
-                  <select
-                    className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    value={form.type}
-                    onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as AutomationType }))}
-                  >
-                    <option value="alert">alerta</option>
-                    <option value="schedule">agendamento</option>
-                  </select>
-                </div>
-              </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">Dispositivo</label>
                   <select
                     className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    value={form.espId}
-                    onChange={(event) => {
-                      const espId = event.target.value
-                      setForm((current) => ({ ...current, espId }))
-                    }}
+                    value={form.deviceId}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        deviceId: e.target.value,
+                        sensorTipo: "",
+                        sensorPino: "",
+                        actionTipo: "",
+                        actionPino: "",
+                      }))
+                    }
                   >
-                    <option value="">selecione</option>
+                    <option value="">Selecione</option>
                     {devices.map((device) => (
                       <option key={device.espId} value={device.espId}>
                         {device.name} - {device.espId}
@@ -479,95 +410,182 @@ export default function Automation() {
                     ))}
                   </select>
                 </div>
+              </div>
 
-                {form.type === "alert" ? (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-muted-foreground">Metrica</label>
-                      <input
-                        list="metricas-sugeridas"
-                        className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                        placeholder="ex.: data.temperatura"
-                        value={form.metricKey || ""}
-                        onChange={(event) => setForm((current) => ({ ...current, metricKey: event.target.value }))}
-                      />
-                      <datalist id="metricas-sugeridas">
-                        {metricas.map((key) => (
-                          <option key={key} value={key} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-muted-foreground">Operador</label>
-                      <select
-                        className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                        value={form.operador}
-                        onChange={(event) => setForm((current) => ({ ...current, operador: event.target.value as Operador }))}
-                      >
-                        <option value=">">&gt;</option>
-                        <option value="<">&lt;</option>
-                        <option value=">=">&gt;=</option>
-                        <option value="<=">&lt;=</option>
-                        <option value="==">==</option>
-                        <option value="!=">!=</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-muted-foreground">Valor</label>
-                      <input
-                        type="number"
-                        className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                        value={form.threshold ?? 0}
-                        onChange={(event) => setForm((current) => ({ ...current, threshold: Number(event.target.value) }))}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-muted-foreground">Horario</label>
-                      <input
-                        type="time"
-                        className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                        value={`${String(form.schedule?.hh ?? 18).padStart(2, "0")}:${String(form.schedule?.mm ?? 0).padStart(2, "0")}`}
-                        onChange={(event) => {
-                          const [hh, mm] = event.target.value.split(":").map((part) => Number(part))
-                          setForm((current) => ({ ...current, schedule: { hh, mm } }))
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-xs font-semibold text-muted-foreground">Metrica (opcional)</label>
-                      <input
-                        list="metricas-sugeridas"
-                        className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                        placeholder="opcional"
-                        value={form.metricKey || ""}
-                        onChange={(event) => setForm((current) => ({ ...current, metricKey: event.target.value }))}
-                      />
-                    </div>
-                  </>
-                )}
+              {/* Sensor Section */}
+              <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                <h3 className="flex items-center gap-2 font-semibold">
+                  <Zap className="h-4 w-4 text-accent" />
+                  Sensor (Condição)
+                </h3>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Tipo do Sensor</label>
+                    <select
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      value={form.sensorTipo}
+                      onChange={(e) => {
+                        const selected = sensorOptions.find((s) => s.tipo === e.target.value)
+                        setForm((prev) => ({
+                          ...prev,
+                          sensorTipo: e.target.value,
+                          sensorPino: selected ? String(selected.pino) : prev.sensorPino,
+                        }))
+                      }}
+                      disabled={!form.deviceId}
+                    >
+                      <option value="">Selecione</option>
+                      {sensorOptions.map((sensor, idx) => (
+                        <option key={idx} value={sensor.tipo}>
+                          {sensor.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Pino do Sensor</label>
+                    <input
+                      type="number"
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      placeholder="ex.: 33"
+                      value={form.sensorPino}
+                      onChange={(e) => setForm((prev) => ({ ...prev, sensorPino: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Campo (field) {loadingFields && <span className="text-xs text-muted-foreground">carregando...</span>}
+                    </label>
+                    <input
+                      list="available-fields"
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      placeholder="ex.: temperature, humidity"
+                      value={form.sensorField}
+                      onChange={(e) => setForm((prev) => ({ ...prev, sensorField: e.target.value }))}
+                    />
+                    <datalist id="available-fields">
+                      {availableFields.map((field) => (
+                        <option key={field} value={field} />
+                      ))}
+                    </datalist>
+                    {availableFields.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Campos disponíveis: {availableFields.join(", ")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Condition Section */}
+              <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                <h3 className="font-semibold">Condição</h3>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Operador</label>
+                    <select
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      value={form.operator}
+                      onChange={(e) => setForm((prev) => ({ ...prev, operator: e.target.value as any }))}
+                    >
+                      <option value=">">&gt;</option>
+                      <option value="<">&lt;</option>
+                      <option value=">=">&gt;=</option>
+                      <option value="<=">&lt;=</option>
+                      <option value="==">==</option>
+                      <option value="!=">!=</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Valor</label>
+                    <input
+                      type="number"
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      placeholder="ex.: 15"
+                      value={form.value}
+                      onChange={(e) => setForm((prev) => ({ ...prev, value: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Section */}
+              <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                <h3 className="flex items-center gap-2 font-semibold">
+                  <Zap className="h-4 w-4 text-primary" />
+                  Ação
+                </h3>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Tipo do Atuador</label>
+                    <select
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      value={form.actionTipo}
+                      onChange={(e) => {
+                        const selected = actuatorOptions.find((a) => a.tipo === e.target.value)
+                        setForm((prev) => ({
+                          ...prev,
+                          actionTipo: e.target.value,
+                          actionPino: selected ? String(selected.pino) : prev.actionPino,
+                        }))
+                      }}
+                      disabled={!form.deviceId}
+                    >
+                      <option value="">Selecione</option>
+                      {actuatorOptions.map((actuator, idx) => (
+                        <option key={idx} value={actuator.tipo}>
+                          {actuator.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Pino do Atuador</label>
+                    <input
+                      type="number"
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      placeholder="ex.: 32"
+                      value={form.actionPino}
+                      onChange={(e) => setForm((prev) => ({ ...prev, actionPino: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Comando</label>
+                    <select
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      value={form.actionCommand}
+                      onChange={(e) => setForm((prev) => ({ ...prev, actionCommand: e.target.value as "ON" | "OFF" }))}
+                    >
+                      <option value="ON">ON</option>
+                      <option value="OFF">OFF</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground">Descricao</label>
+                <label className="text-xs font-semibold text-muted-foreground">Descrição</label>
                 <textarea
                   className="min-h-[80px] w-full rounded-md border border-border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="ex.: notificar quando temperatura exceder 30 C"
-                  value={form.description || ""}
-                  onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                  placeholder="Descrição opcional da regra"
+                  value={form.description}
+                  onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
                 />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit">{editId ? "Salvar alteracoes" : "Salvar"}</Button>
+              <div className="flex gap-2">
+                <Button type="submit">{editingId ? "Salvar Alterações" : "Criar Regra"}</Button>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => {
-                    setAbrirForm(false)
-                    setEditId(null)
+                    setShowForm(false)
+                    setEditingId(null)
                   }}
                 >
                   Cancelar
@@ -577,117 +595,59 @@ export default function Automation() {
           </Card>
         )}
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card className="border-primary/20 bg-card/50 p-6 backdrop-blur">
-            <div className="mb-4 flex items-center gap-2">
-              <Zap className="h-5 w-5 text-primary" />
-              <h2 className="text-xl font-semibold">Automacoes</h2>
-              <span className="text-sm text-muted-foreground">{totalAtivas} de {automacoes.length}</span>
-            </div>
-            <div className="space-y-3">
-              {automacoes.map((automation) => (
-                <div key={automation.id} className="rounded-lg border border-border/50 p-4 transition-all hover:border-primary/40">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="mb-1 flex items-center gap-2">
-                        {automation.type === "alert" ? <Bell className="h-4 w-4 text-accent" /> : <Clock className="h-4 w-4 text-secondary" />}
-                        <h3 className="font-semibold">{automation.name || "Sem titulo"}</h3>
-                        <Badge variant="outline" className="ml-1 text-xs">{automation.type}</Badge>
-                      </div>
-                      <p className="mb-2 text-sm text-muted-foreground">{automation.description || "-"}</p>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span>device: {automation.espId || "-"}</span>
-                        {automation.type === "alert" && (
-                          <>
-                            <span>metric: {automation.metricKey || "-"}</span>
-                            <span>rule: {automation.operador} {automation.threshold}</span>
-                          </>
-                        )}
-                        {automation.type === "schedule" && automation.schedule && (
-                          <span>
-                            horario: {String(automation.schedule.hh).padStart(2, "0")}:{String(automation.schedule.mm).padStart(2, "0")}
-                          </span>
-                        )}
-                        <span>ultimo: {automation.lastTriggered ? formatDateTime(automation.lastTriggered) : "Nunca"}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <Switch
-                        checked={automation.enabled}
-                        onCheckedChange={(value) =>
-                          setAutomacoes((current) =>
-                            current.map((item) => (item.id === automation.id ? { ...item, enabled: value } : item))
-                          )
-                        }
-                      />
-                      <div className="flex gap-1">
-                        <Button variant="outline" size="sm" className="gap-1" onClick={() => editar(automation)}>
-                          <Edit3 className="h-4 w-4" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
-                          onClick={() => remover(automation)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Remover
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {!automacoes.length && (
-                <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
-                  Nenhuma automacao criada
-                </div>
-              )}
-            </div>
-          </Card>
-
-          <Card className="border-primary/20 bg-card/50 p-6 backdrop-blur">
-            <div className="mb-4 flex items-center gap-2">
-              <Bell className="h-5 w-5 text-accent" />
-              <h2 className="text-xl font-semibold">Eventos Recentes</h2>
-            </div>
-            <div className="space-y-3">
-              {eventos.length ? (
-                eventos.slice(0, 20).map((evento) => (
-                  <div key={evento.id} className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">{evento.name}</div>
-                      <div className="text-xs text-muted-foreground">{formatDateTime(evento.ts)}</div>
-                    </div>
-                    <div className="mt-1 text-foreground">{evento.text}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">device: {evento.espId}</div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">Sem eventos</div>
-              )}
-            </div>
-          </Card>
-        </div>
-
         <Card className="border-primary/20 bg-card/50 p-6 backdrop-blur">
-          <h2 className="mb-4 text-xl font-semibold">Configuracoes gerais</h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border border-border/50 p-4">
-              <div>
-                <p className="font-medium">Notificacoes Push</p>
-                <p className="text-sm text-muted-foreground">preferencia local, sem envio real</p>
+          <div className="mb-4 flex items-center gap-2">
+            <Zap className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Regras de Automação</h2>
+            <Badge variant="outline">{rules.length}</Badge>
+          </div>
+          <div className="space-y-3">
+            {rules.map((rule) => (
+              <div key={rule._id} className="rounded-lg border border-border/50 p-4 transition-all hover:border-primary/40">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="mb-1 flex items-center gap-2">
+                      <h3 className="font-semibold">{rule.name}</h3>
+                      <Badge variant={rule.enabled ? "default" : "secondary"} className="text-xs">
+                        {rule.enabled ? "ativa" : "inativa"}
+                      </Badge>
+                    </div>
+                    <p className="mb-2 text-sm text-muted-foreground">{rule.description || "-"}</p>
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>Device: {rule.deviceId}</span>
+                      <span>•</span>
+                      <span>
+                        SE {rule.sensor.tipo} (pino {rule.sensor.pino}) {rule.condition.operator} {rule.condition.value}
+                      </span>
+                      <span>•</span>
+                      <span>
+                        ENTÃO {rule.action.tipo} (pino {rule.action.pino}) = {rule.action.command}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="outline" size="sm" className="gap-1" onClick={() => edit(rule)}>
+                      <Edit3 className="h-4 w-4" />
+                      Editar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                      onClick={() => remove(rule)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Remover
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <Switch defaultChecked />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-border/50 p-4">
-              <div>
-                <p className="font-medium">Coleta automatica</p>
-                <p className="text-sm text-muted-foreground">monitoramento continuo das leituras</p>
+            ))}
+            {!rules.length && (
+              <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
+                Nenhuma regra criada
               </div>
-              <Switch defaultChecked />
-            </div>
+            )}
           </div>
         </Card>
       </div>
