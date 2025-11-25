@@ -8,11 +8,13 @@ import { Plus, Zap, Trash2, Edit3, RefreshCw } from "lucide-react"
 
 import { API_URL } from "@/lib/api"
 import { useDeviceRegistry } from "@/lib/device-registry"
+import { cn } from "@/lib/utils"
 
 type Rule = {
   _id?: string
   name: string
   deviceId: string
+  targetDeviceId: string
   sensor: {
     tipo: string
     pino: number
@@ -35,6 +37,7 @@ type Rule = {
 type RuleForm = {
   name: string
   deviceId: string
+  targetDeviceId: string
   sensorTipo: string
   sensorPino: string
   sensorField: string
@@ -50,6 +53,7 @@ type RuleForm = {
 const createEmptyForm = (): RuleForm => ({
   name: "",
   deviceId: "",
+  targetDeviceId: "",
   sensorTipo: "",
   sensorPino: "",
   sensorField: "",
@@ -62,8 +66,35 @@ const createEmptyForm = (): RuleForm => ({
   description: "",
 })
 
+// Definições estáticas do que o Hardware/Backend suporta
+const SENSOR_DEFINITIONS: Record<string, { label: string; fields: string[] }> = {
+  dht11: { label: "DHT11 (Temp/Umid)", fields: ["temperature", "humidity"] },
+  dht22: { label: "DHT22 (Temp/Umid)", fields: ["temperature", "humidity"] },
+  ds18b20: { label: "DS18B20 (Temp)", fields: ["temperature"] },
+  hcsr04: { label: "HC-SR04 (Distância)", fields: ["distance"] },
+  ldr: { label: "LDR (Luz)", fields: ["value"] },
+  pir: { label: "PIR (Movimento)", fields: ["value"] },
+  joystick: { label: "Joystick", fields: ["x", "y", "click"] },
+  mpu6050: { label: "MPU6050 (Acel/Giro)", fields: ["acelerometro.x", "acelerometro.y", "acelerometro.z", "giroscopio.x", "giroscopio.y", "giroscopio.z"] },
+  apds9960: { label: "APDS9960 (Gesto/Cor)", fields: ["value"] },
+  keypad4x4: { label: "Teclado 4x4", fields: ["tecla"] },
+  ir_receiver: { label: "Receptor IR", fields: ["code"] },
+  // Genéricos
+  sensor: { label: "Sensor Genérico", fields: ["value"] },
+}
+
+const ACTUATOR_DEFINITIONS: Record<string, { label: string }> = {
+  led: { label: "LED" },
+  rele: { label: "Relé" },
+  motor: { label: "Motor DC" },
+  motor_vibracao: { label: "Motor de Vibração" },
+  buzzer: { label: "Buzzer" },
+  servo: { label: "Servo Motor" },
+  relay: { label: "Relé" },
+}
+
 export default function Automation() {
-  const { devices } = useDeviceRegistry()
+  const { devices, refreshDevices } = useDeviceRegistry()
   const [rules, setRules] = useState<Rule[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -108,6 +139,16 @@ export default function Automation() {
       }
     }
 
+    // Se temos uma definição estática para este sensor, usamos/mesclamos
+    const def = SENSOR_DEFINITIONS[form.sensorTipo.toLowerCase()]
+    if (def) {
+      // Se quisermos forçar apenas os estáticos:
+      setAvailableFields(def.fields)
+      // Se quisermos mesclar (estático + dinâmico), descomente abaixo e ajuste a lógica do fetchFields
+      // mas o usuário pediu "o que o back espera", então estático é mais seguro/limpo.
+      return
+    }
+
     fetchFields()
   }, [form.deviceId, form.sensorTipo])
 
@@ -132,6 +173,11 @@ export default function Automation() {
 
   useEffect(() => {
     loadRules()
+    // Poll devices every 5 seconds to update status
+    const interval = setInterval(() => {
+      refreshDevices()
+    }, 5000)
+    return () => clearInterval(interval)
   }, [])
 
   const openNew = () => {
@@ -146,6 +192,7 @@ export default function Automation() {
     setForm({
       name: rule.name,
       deviceId: rule.deviceId,
+      targetDeviceId: rule.targetDeviceId || rule.deviceId, // fallback for old rules
       sensorTipo: rule.sensor.tipo,
       sensorPino: String(rule.sensor.pino),
       sensorField: rule.sensor.field,
@@ -194,7 +241,8 @@ export default function Automation() {
     setMessage("")
 
     if (!form.name.trim()) return setError("Informe um nome")
-    if (!form.deviceId.trim()) return setError("Selecione um dispositivo")
+    if (!form.deviceId.trim()) return setError("Selecione um dispositivo gatilho")
+    if (!form.targetDeviceId.trim()) return setError("Selecione um dispositivo alvo")
     if (!form.sensorTipo.trim()) return setError("Informe o tipo do sensor")
     if (!form.sensorPino.trim()) return setError("Informe o pino do sensor")
     if (!form.sensorField.trim()) return setError("Informe o campo do sensor")
@@ -205,6 +253,7 @@ export default function Automation() {
     const payload: Omit<Rule, "_id"> = {
       name: form.name.trim(),
       deviceId: form.deviceId.trim(),
+      targetDeviceId: form.targetDeviceId.trim(),
       sensor: {
         tipo: form.sensorTipo.trim(),
         pino: Number(form.sensorPino),
@@ -266,8 +315,34 @@ export default function Automation() {
   const sensorOptions: Array<{ tipo: string; pino: number; label: string }> = []
   const actuatorOptions: Array<{ tipo: string; pino: number; label: string }> = []
 
+  // Populate Sensor Options (from Trigger Device)
   if (form.deviceId) {
     const device = devices.find((d) => d.espId === form.deviceId)
+    if (device) {
+      device.components?.forEach((comp) => {
+        const label = `${comp.label || comp.name || comp.model} (pino ${comp.pin})`
+        const tipo = (comp.type || "").toLowerCase()
+        const modelo = (comp.model || "").toLowerCase()
+
+        // lista de modelos conhecidos de sensores
+        const modelosSensores = ["dht11", "dht22", "ds18b20", "hcsr04", "mpu6050", "apds9960", "bmp280", "ldr", "pir", "joystick"]
+        const isSensorPorModelo = modelosSensores.some(m => modelo.includes(m))
+        const isSensor = tipo === "sensor" || isSensorPorModelo
+
+        if (isSensor) {
+          sensorOptions.push({
+            tipo: comp.model || "",
+            pino: comp.pin || 0,
+            label,
+          })
+        }
+      })
+    }
+  }
+
+  // Populate Actuator Options (from Target Device)
+  if (form.targetDeviceId) {
+    const device = devices.find((d) => d.espId === form.targetDeviceId)
     if (device) {
       device.components?.forEach((comp) => {
         const label = `${comp.label || comp.name || comp.model} (pino ${comp.pin})`
@@ -278,12 +353,6 @@ export default function Automation() {
         const modelosAtuadores = ["led", "rele", "motor", "motor_vibracao", "buzzer", "servo", "relay"]
         const isAtuadorPorModelo = modelosAtuadores.some(m => modelo.includes(m))
 
-        // lista de modelos conhecidos de sensores
-        const modelosSensores = ["dht11", "dht22", "ds18b20", "hcsr04", "mpu6050", "apds9960", "bmp280", "ldr", "pir", "joystick"]
-        const isSensorPorModelo = modelosSensores.some(m => modelo.includes(m))
-
-        // determinar se é sensor ou atuador
-        const isSensor = tipo === "sensor" || isSensorPorModelo
         const isAtuador =
           tipo === "atuador" ||
           tipo === "actuator" ||
@@ -293,29 +362,11 @@ export default function Automation() {
           tipo === "motor_vibracao" ||
           isAtuadorPorModelo
 
-        if (isSensor && !isAtuador) {
-          sensorOptions.push({
-            tipo: comp.model || "",
-            pino: comp.pin || 0,
-            label,
-          })
-        } else if (isAtuador && !isSensor) {
+        if (isAtuador) {
           actuatorOptions.push({
             tipo: comp.model || "",
             pino: comp.pin || 0,
             label,
-          })
-        } else {
-          // se não conseguiu determinar ou se for ambíguo, adiciona em ambos
-          sensorOptions.push({
-            tipo: comp.model || "",
-            pino: comp.pin || 0,
-            label: `${label} [?]`,
-          })
-          actuatorOptions.push({
-            tipo: comp.model || "",
-            pino: comp.pin || 0,
-            label: `${label} [?]`,
           })
         }
       })
@@ -377,17 +428,7 @@ export default function Automation() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground">Nome da Regra</label>
-                  <input
-                    className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    placeholder="ex.: Ligar LED acima de 15°C"
-                    value={form.name}
-                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground">Dispositivo</label>
+                  <label className="text-xs font-semibold text-muted-foreground">Dispositivo Gatilho (Sensor)</label>
                   <select
                     className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                     value={form.deviceId}
@@ -397,18 +438,26 @@ export default function Automation() {
                         deviceId: e.target.value,
                         sensorTipo: "",
                         sensorPino: "",
-                        actionTipo: "",
-                        actionPino: "",
                       }))
                     }
                   >
                     <option value="">Selecione</option>
                     {devices.map((device) => (
                       <option key={device.espId} value={device.espId}>
-                        {device.name} - {device.espId}
+                        {device.status === 'online' ? '🟢' : '🔴'} {device.name} - {device.espId}
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground">Nome da Regra</label>
+                  <input
+                    className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="ex.: Ligar LED acima de 15°C"
+                    value={form.name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
                 </div>
               </div>
 
@@ -456,25 +505,20 @@ export default function Automation() {
 
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-muted-foreground">
-                      Campo (field) {loadingFields && <span className="text-xs text-muted-foreground">carregando...</span>}
+                      Campo (field)
                     </label>
-                    <input
-                      list="available-fields"
+                    <select
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      placeholder="ex.: temperature, humidity"
                       value={form.sensorField}
                       onChange={(e) => setForm((prev) => ({ ...prev, sensorField: e.target.value }))}
-                    />
-                    <datalist id="available-fields">
+                    >
+                      <option value="">Selecione</option>
                       {availableFields.map((field) => (
-                        <option key={field} value={field} />
+                        <option key={field} value={field}>
+                          {field}
+                        </option>
                       ))}
-                    </datalist>
-                    {availableFields.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Campos disponíveis: {availableFields.join(", ")}
-                      </p>
-                    )}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -518,6 +562,30 @@ export default function Automation() {
                   <Zap className="h-4 w-4 text-primary" />
                   Ação
                 </h3>
+                <div className="grid gap-4 md:grid-cols-2 mb-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Dispositivo Alvo (Atuador)</label>
+                    <select
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      value={form.targetDeviceId}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          targetDeviceId: e.target.value,
+                          actionTipo: "",
+                          actionPino: "",
+                        }))
+                      }
+                    >
+                      <option value="">Selecione</option>
+                      {devices.map((device) => (
+                        <option key={device.espId} value={device.espId}>
+                          {device.status === 'online' ? '🟢' : '🔴'} {device.name} - {device.espId}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-muted-foreground">Tipo do Atuador</label>
@@ -532,7 +600,7 @@ export default function Automation() {
                           actionPino: selected ? String(selected.pino) : prev.actionPino,
                         }))
                       }}
-                      disabled={!form.deviceId}
+                      disabled={!form.targetDeviceId}
                     >
                       <option value="">Selecione</option>
                       {actuatorOptions.map((actuator, idx) => (
@@ -614,7 +682,9 @@ export default function Automation() {
                     </div>
                     <p className="mb-2 text-sm text-muted-foreground">{rule.description || "-"}</p>
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>Device: {rule.deviceId}</span>
+                      <span>Gatilho: {rule.deviceId}</span>
+                      <span>→</span>
+                      <span>Alvo: {rule.targetDeviceId || rule.deviceId}</span>
                       <span>•</span>
                       <span>
                         SE {rule.sensor.tipo} (pino {rule.sensor.pino}) {rule.condition.operator} {rule.condition.value}

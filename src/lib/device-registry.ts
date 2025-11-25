@@ -15,6 +15,8 @@ export type ComponentConfig = {
 export type Device = {
   name: string
   espId: string
+  status?: 'online' | 'offline'
+  lastSeen?: string
   components: ComponentConfig[]
 }
 
@@ -71,6 +73,8 @@ const sanitizeDevice = (input: DeviceInput | undefined): Device | null => {
   return {
     name,
     espId,
+    status: input.status as 'online' | 'offline' | undefined,
+    lastSeen: input.lastSeen,
     components,
   }
 }
@@ -146,12 +150,24 @@ const upsertInternal = (device: DeviceInput, originalEspId?: string) => {
   return setAll(next)
 }
 
-const removeInternal = (espId: string) => {
+const removeInternal = async (espId: string) => {
   const id = (espId || "").trim()
   if (!id) return readDevices()
+
+  // Optimistic update
   const current = readDevices()
   const next = current.filter((d) => d.espId !== id)
-  return setAll(next)
+  setAll(next)
+
+  // Call backend
+  try {
+    await fetch(`${API_URL}/api/devices/${id}`, { method: 'DELETE' })
+  } catch (err) {
+    console.error("Failed to delete device from backend:", err)
+    // Optionally revert if needed, but for now we keep optimistic UI
+  }
+
+  return next
 }
 
 /**
@@ -194,7 +210,7 @@ export const deviceRegistry = {
   get: (): Device[] => readDevices(),
   set: (devices: DeviceInput[]) => setAll(devices as Device[]),
   upsert: (device: DeviceInput, originalEspId?: string) => upsertInternal(device, originalEspId),
-  remove: (espId: string) => removeInternal(espId),
+  remove: async (espId: string) => await removeInternal(espId),
   fetchFromBackend,
   subscribe: (listener: (devices: Device[]) => void) => {
     listeners.add(listener)
@@ -236,6 +252,7 @@ export const useDeviceRegistry = () => {
     replaceAll: (list: DeviceInput[]) => deviceRegistry.set(list),
     reset: () => deviceRegistry.set([]),
     refresh: () => deviceRegistry.fetchFromBackend(),
+    refreshDevices: () => deviceRegistry.fetchFromBackend(),
   }
 }
 
