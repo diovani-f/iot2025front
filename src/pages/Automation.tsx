@@ -88,17 +88,17 @@ const parsePinInput = (value: string): number | number[] => {
 
 // Definições estáticas do que o Hardware/Backend suporta
 const SENSOR_DEFINITIONS: Record<string, { label: string; fields: string[] }> = {
-  dht11: { label: "DHT11 (Temp/Umid)", fields: ["temperature", "humidity"] },
-  dht22: { label: "DHT22 (Temp/Umid)", fields: ["temperature", "humidity"] },
-  ds18b20: { label: "DS18B20 (Temp)", fields: ["temperature"] },
-  hcsr04: { label: "HC-SR04 (Distância)", fields: ["distance"] },
+  dht11: { label: "DHT11 (Temp/Umid)", fields: ["temperatura_c", "umidade_pct"] },
+  ds18b20: { label: "DS18B20 (Temp)", fields: ["temperatura_c"] },
+  hcsr04: { label: "HC-SR04 (Distância)", fields: ["distancia_cm"] },
   ldr: { label: "LDR (Luz)", fields: ["value"] },
   pir: { label: "PIR (Movimento)", fields: ["value"] },
-  joystick: { label: "Joystick", fields: ["x", "y", "click"] },
+  joystick: { label: "Joystick", fields: ["x", "y", "evento"] },
   mpu6050: { label: "MPU6050 (Acel/Giro)", fields: ["acelerometro.x", "acelerometro.y", "acelerometro.z", "giroscopio.x", "giroscopio.y", "giroscopio.z"] },
-  apds9960: { label: "APDS9960 (Gesto/Cor)", fields: ["value"] },
+  apds9960: { label: "APDS9960 (Gesto/Cor)", fields: ["gesto", "proximidade", "luz_ambiente", "cor.r", "cor.g", "cor.b"] },
   keypad4x4: { label: "Teclado 4x4", fields: ["tecla"] },
-  ir_receiver: { label: "Receptor IR", fields: ["code"] },
+  ir_receiver: { label: "Receptor IR", fields: ["codigo_hex"] },
+  encoder: { label: "Encoder", fields: ["aberto"] },
   // Genéricos
   sensor: { label: "Sensor Genérico", fields: ["value"] },
 }
