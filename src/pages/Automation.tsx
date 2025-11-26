@@ -28,8 +28,12 @@ type Rule = {
   action: {
     tipo: string
     pino: number | number[]
-    command: "ON" | "OFF"
-  }
+    command: "ON" | "OFF" | "ON_3S" | "ON_1S"
+  } | Array<{
+    tipo: string
+    pino: number | number[]
+    command: "ON" | "OFF" | "ON_3S" | "ON_1S"
+  }>
   enabled?: boolean
   description?: string
 }
@@ -45,7 +49,7 @@ type RuleForm = {
   value: string
   actionTipo: string
   actionPino: string
-  actionCommand: "ON" | "OFF"
+  actionCommand: "ON" | "OFF" | "ON_3S" | "ON_1S"
   enabled: boolean
   description: string
 }
@@ -205,6 +209,7 @@ export default function Automation() {
   }
 
   const edit = (rule: Rule) => {
+    const action = Array.isArray(rule.action) ? rule.action[0] : rule.action
     setForm({
       name: rule.name,
       deviceId: rule.deviceId,
@@ -214,9 +219,9 @@ export default function Automation() {
       sensorField: rule.sensor.field,
       operator: rule.condition.operator as any,
       value: String(rule.condition.value),
-      actionTipo: rule.action.tipo,
-      actionPino: Array.isArray(rule.action.pino) ? JSON.stringify(rule.action.pino) : String(rule.action.pino),
-      actionCommand: rule.action.command,
+      actionTipo: action.tipo,
+      actionPino: Array.isArray(action.pino) ? JSON.stringify(action.pino) : String(action.pino),
+      actionCommand: action.command,
       enabled: rule.enabled !== false,
       description: rule.description || "",
     })
@@ -641,10 +646,12 @@ export default function Automation() {
                     <select
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                       value={form.actionCommand}
-                      onChange={(e) => setForm((prev) => ({ ...prev, actionCommand: e.target.value as "ON" | "OFF" }))}
+                      onChange={(e) => setForm((prev) => ({ ...prev, actionCommand: e.target.value as "ON" | "OFF" | "ON_3S" | "ON_1S" }))}
                     >
                       <option value="ON">ON</option>
                       <option value="OFF">OFF</option>
+                      <option value="ON_1S">ON 1s</option>
+                      <option value="ON_3S">ON 3s</option>
                     </select>
                   </div>
                 </div>
