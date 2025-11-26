@@ -123,7 +123,7 @@ export default function Automation() {
           const extractFields = (obj: any, prefix = "") => {
             for (const key in obj) {
               if (typeof obj[key] === "number") {
-                fields.push(prefix ? `${prefix}.${key}` : key)
+                fields.push(key)
               } else if (typeof obj[key] === "object" && obj[key] !== null && !Array.isArray(obj[key])) {
                 extractFields(obj[key], prefix ? `${prefix}.${key}` : key)
               }
