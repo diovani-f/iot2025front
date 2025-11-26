@@ -8,7 +8,7 @@ export type Component = {
   name?: string
   model?: string
   type?: string
-  pin?: number
+  pin?: number | number[]
   interval?: number
   unit?: string
   label?: string

@@ -5,7 +5,7 @@ export type ComponentConfig = {
   name?: string
   model?: string
   type?: string
-  pin?: number
+  pin?: number | number[]
   interval?: number
   unit?: string
   label?: string
@@ -34,8 +34,29 @@ const clampNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(num) ? num : fallback
 }
 
+const parsePin = (value: unknown): number | number[] | undefined => {
+  if (typeof value === "number") return value
+  if (Array.isArray(value)) return value.every(v => typeof v === "number") ? value : undefined
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed) && parsed.every(v => typeof v === "number")) {
+          return parsed
+        }
+      } catch {
+        // ignore error
+      }
+    }
+    const num = Number(trimmed)
+    if (Number.isFinite(num)) return num
+  }
+  return undefined
+}
+
 const sanitizeComponent = (input: Partial<ComponentConfig> | undefined): ComponentConfig => {
-  const pin = clampNumber(input?.pin, 0)
+  const pin = parsePin(input?.pin) ?? 0
   const intervalRaw = clampNumber(input?.interval, NaN)
   const config: { min?: number; max?: number } = {}
 

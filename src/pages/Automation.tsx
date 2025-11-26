@@ -17,7 +17,7 @@ type Rule = {
   targetDeviceId: string
   sensor: {
     tipo: string
-    pino: number
+    pino: number | number[]
     field: string
   }
   condition: {
@@ -27,7 +27,7 @@ type Rule = {
   }
   action: {
     tipo: string
-    pino: number
+    pino: number | number[]
     command: "ON" | "OFF"
   }
   enabled?: boolean
@@ -65,6 +65,22 @@ const createEmptyForm = (): RuleForm => ({
   enabled: true,
   description: "",
 })
+
+const parsePinInput = (value: string): number | number[] => {
+  const trimmed = value.trim()
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number")) {
+        return parsed
+      }
+    } catch {
+      // ignore
+    }
+  }
+  const num = Number(trimmed)
+  return isNaN(num) ? 0 : num
+}
 
 // Definições estáticas do que o Hardware/Backend suporta
 const SENSOR_DEFINITIONS: Record<string, { label: string; fields: string[] }> = {
@@ -194,12 +210,12 @@ export default function Automation() {
       deviceId: rule.deviceId,
       targetDeviceId: rule.targetDeviceId || rule.deviceId, // fallback for old rules
       sensorTipo: rule.sensor.tipo,
-      sensorPino: String(rule.sensor.pino),
+      sensorPino: Array.isArray(rule.sensor.pino) ? JSON.stringify(rule.sensor.pino) : String(rule.sensor.pino),
       sensorField: rule.sensor.field,
       operator: rule.condition.operator as any,
       value: String(rule.condition.value),
       actionTipo: rule.action.tipo,
-      actionPino: String(rule.action.pino),
+      actionPino: Array.isArray(rule.action.pino) ? JSON.stringify(rule.action.pino) : String(rule.action.pino),
       actionCommand: rule.action.command,
       enabled: rule.enabled !== false,
       description: rule.description || "",
@@ -256,7 +272,7 @@ export default function Automation() {
       targetDeviceId: form.targetDeviceId.trim(),
       sensor: {
         tipo: form.sensorTipo.trim(),
-        pino: Number(form.sensorPino),
+        pino: parsePinInput(form.sensorPino),
         field: form.sensorField.trim(),
       },
       condition: {
@@ -265,7 +281,7 @@ export default function Automation() {
       },
       action: {
         tipo: form.actionTipo.trim(),
-        pino: Number(form.actionPino),
+        pino: parsePinInput(form.actionPino),
         command: form.actionCommand,
       },
       enabled: form.enabled,
@@ -312,8 +328,8 @@ export default function Automation() {
   }
 
   // get unique sensor and actuator components from devices
-  const sensorOptions: Array<{ tipo: string; pino: number; label: string }> = []
-  const actuatorOptions: Array<{ tipo: string; pino: number; label: string }> = []
+  const sensorOptions: Array<{ tipo: string; pino: number | number[]; label: string }> = []
+  const actuatorOptions: Array<{ tipo: string; pino: number | number[]; label: string }> = []
 
   // Populate Sensor Options (from Trigger Device)
   if (form.deviceId) {
@@ -478,7 +494,7 @@ export default function Automation() {
                         setForm((prev) => ({
                           ...prev,
                           sensorTipo: e.target.value,
-                          sensorPino: selected ? String(selected.pino) : prev.sensorPino,
+                          sensorPino: selected ? (Array.isArray(selected.pino) ? JSON.stringify(selected.pino) : String(selected.pino)) : prev.sensorPino,
                         }))
                       }}
                       disabled={!form.deviceId}
@@ -495,9 +511,8 @@ export default function Automation() {
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-muted-foreground">Pino do Sensor</label>
                     <input
-                      type="number"
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      placeholder="ex.: 33"
+                      placeholder="ex.: 33 ou [32, 33]"
                       value={form.sensorPino}
                       onChange={(e) => setForm((prev) => ({ ...prev, sensorPino: e.target.value }))}
                     />
@@ -597,7 +612,7 @@ export default function Automation() {
                         setForm((prev) => ({
                           ...prev,
                           actionTipo: e.target.value,
-                          actionPino: selected ? String(selected.pino) : prev.actionPino,
+                          actionPino: selected ? (Array.isArray(selected.pino) ? JSON.stringify(selected.pino) : String(selected.pino)) : prev.actionPino,
                         }))
                       }}
                       disabled={!form.targetDeviceId}
@@ -614,9 +629,8 @@ export default function Automation() {
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-muted-foreground">Pino do Atuador</label>
                     <input
-                      type="number"
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      placeholder="ex.: 32"
+                      placeholder="ex.: 32 ou [32, 33]"
                       value={form.actionPino}
                       onChange={(e) => setForm((prev) => ({ ...prev, actionPino: e.target.value }))}
                     />
@@ -687,11 +701,11 @@ export default function Automation() {
                       <span>Alvo: {rule.targetDeviceId || rule.deviceId}</span>
                       <span>•</span>
                       <span>
-                        SE {rule.sensor.tipo} (pino {rule.sensor.pino}) {rule.condition.operator} {rule.condition.value}
+                        SE {rule.sensor.tipo} (pino {Array.isArray(rule.sensor.pino) ? JSON.stringify(rule.sensor.pino) : rule.sensor.pino}) {rule.condition.operator} {rule.condition.value}
                       </span>
                       <span>•</span>
                       <span>
-                        ENTÃO {rule.action.tipo} (pino {rule.action.pino}) = {rule.action.command}
+                        ENTÃO {rule.action.tipo} (pino {Array.isArray(rule.action.pino) ? JSON.stringify(rule.action.pino) : rule.action.pino}) = {rule.action.command}
                       </span>
                     </div>
                   </div>

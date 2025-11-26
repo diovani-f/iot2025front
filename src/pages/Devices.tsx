@@ -23,7 +23,7 @@ type CompForm = {
   name?: string
   model?: string
   type?: string
-  pin?: number | string
+  pin?: number | string | number[]
   interval?: number | string
   unit?: string
   label?: string
@@ -62,6 +62,27 @@ const validar = (device: DeviceForm) => {
 const toNumber = (value: number | string | undefined, fallback: number) => {
   if (typeof value === "number" && Number.isFinite(value)) return value
   if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
+const parsePinInput = (value: number | string | number[] | undefined, fallback: number | number[]) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (Array.isArray(value)) return value
+  if (typeof value === "string" && value.trim()) {
+    const trimmed = value.trim()
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number")) {
+          return parsed
+        }
+      } catch {
+        // ignore
+      }
+    }
     const parsed = Number(value)
     if (Number.isFinite(parsed)) return parsed
   }
@@ -179,7 +200,7 @@ export default function Devices() {
           name: (component.name || "").trim(),
           model: (component.model || "").trim(),
           type: (component.type || "sensor").trim() || "sensor",
-          pin: toNumber(component.pin, 0),
+          pin: parsePinInput(component.pin, 0),
           interval: toNumber(component.interval, 1000),
           unit: (component.unit || "").trim() || undefined,
           label: (component.label || "").trim(),
@@ -240,7 +261,7 @@ export default function Devices() {
         name: component.name || "",
         model: component.model || "",
         type: component.type || "sensor",
-        pin: component.pin ?? 0,
+        pin: Array.isArray(component.pin) ? JSON.stringify(component.pin) : component.pin ?? 0,
         interval: component.interval ?? 1000,
         unit: component.unit || "",
         label: component.label || "",
@@ -453,7 +474,11 @@ export default function Devices() {
                               <span className="text-xs font-semibold text-muted-foreground">Pino</span>
                               <input
                                 className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                                value={component.pin ?? ""}
+                                value={
+                                  typeof component.pin === "object"
+                                    ? JSON.stringify(component.pin)
+                                    : component.pin ?? ""
+                                }
                                 onChange={(event) => setCompCampo(index, "pin", event.target.value)}
                               />
                             </label>
@@ -547,7 +572,7 @@ export default function Devices() {
                           </div>
                           <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
                             <span>Modelo: {component.model || "-"}</span>
-                            <span>Pino: {typeof component.pin === "number" ? component.pin : component.pin || "-"}</span>
+                            <span>Pino: {Array.isArray(component.pin) ? JSON.stringify(component.pin) : component.pin ?? "-"}</span>
                             <span>Intervalo: {component.interval ?? "-"} ms</span>
                             {component.unit ? <span>Unidade: {component.unit}</span> : null}
                             {component.config?.min !== undefined || component.config?.max !== undefined ? (

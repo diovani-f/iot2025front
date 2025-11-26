@@ -51,10 +51,11 @@ export const resolveComponentKey = (component: Component, index: number): string
 }
 
 export const resolveSensorId = (component: Component, index = 0): string | null => {
-  if (typeof component.pin !== "number") return null
+  if (typeof component.pin !== "number" && !Array.isArray(component.pin)) return null
   const tipo = mapModelToTipo(component.model || component.label || component.name || component.type || "")
   if (!tipo) return null
-  return `${tipo}_${component.pin}`
+  const pinStr = Array.isArray(component.pin) ? component.pin.join("_") : component.pin
+  return `${tipo}_${pinStr}`
 }
 
 export const describeComponent = (component: Component, index: number): string => {
@@ -62,6 +63,7 @@ export const describeComponent = (component: Component, index: number): string =
     .filter(Boolean)
     .map((s) => String(s))
   if (typeof component.pin === "number") pieces.push(`pino ${component.pin}`)
+  if (Array.isArray(component.pin)) pieces.push(`pinos ${JSON.stringify(component.pin)}`)
   return pieces.length ? pieces.join(" · ") : `Componente ${index + 1}`
 }
 
