@@ -96,7 +96,7 @@ const SENSOR_DEFINITIONS: Record<string, { label: string; fields: string[] }> = 
   joystick: { label: "Joystick", fields: ["x", "y", "evento"] },
   mpu6050: { label: "MPU6050 (Acel/Giro)", fields: ["acelerometro.x", "acelerometro.y", "acelerometro.z", "giroscopio.x", "giroscopio.y", "giroscopio.z"] },
   apds9960: { label: "APDS9960 (Gesto/Cor)", fields: ["gesto", "proximidade", "luz_ambiente", "cor.r", "cor.g", "cor.b"] },
-  keypad4x4: { label: "Teclado 4x4", fields: ["tecla"] },
+  keypad4x4: { label: "Teclado 4x4", fields: ["senha_completa"] },
   ir_receiver: { label: "Receptor IR", fields: ["codigo_hex"] },
   encoder: { label: "Encoder", fields: ["aberto"] },
   // Genéricos
@@ -566,9 +566,9 @@ export default function Automation() {
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-muted-foreground">Valor</label>
                     <input
-                      type="number"
+                      type="text"
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      placeholder="ex.: 15"
+                      placeholder="ex.: 15 ou UP"
                       value={form.value}
                       onChange={(e) => setForm((prev) => ({ ...prev, value: e.target.value }))}
                     />
