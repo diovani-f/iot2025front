@@ -4,6 +4,7 @@ import { Plus, RefreshCw, Repeat, Settings, Wifi, WifiOff, X } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { API_URL } from "@/lib/api"
 import { useDeviceRegistry, type ComponentConfig, type Device as StoredDevice } from "@/lib/device-registry"
 
@@ -453,19 +454,45 @@ export default function Devices() {
                             </label>
                             <label className="space-y-1">
                               <span className="text-xs font-semibold text-muted-foreground">Modelo</span>
-                              <input
-                                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                              <Select
                                 value={component.model || ""}
-                                onChange={(event) => setCompCampo(index, "model", event.target.value)}
-                              />
+                                onValueChange={(value) => setCompCampo(index, "model", value)}
+                              >
+                                <SelectTrigger className="h-9 w-full">
+                                  <SelectValue placeholder="Selecione o modelo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="botao">Botão</SelectItem>
+                                  <SelectItem value="encoder">Encoder</SelectItem>
+                                  <SelectItem value="hcsr04">Ultrassônico (HC-SR04)</SelectItem>
+                                  <SelectItem value="mpu6050">Acelerômetro (MPU6050)</SelectItem>
+                                  <SelectItem value="apds9960">Gestos/Cor (APDS9960)</SelectItem>
+                                  <SelectItem value="ir_receiver">Receptor IR</SelectItem>
+                                  <SelectItem value="dht11">Temp/Umid (DHT11)</SelectItem>
+                                  <SelectItem value="dht22">Temp/Umid (DHT22)</SelectItem>
+                                  <SelectItem value="ds18b20">Temp (DS18B20)</SelectItem>
+                                  <SelectItem value="joystick_ky023">Joystick (KY-023)</SelectItem>
+                                  <SelectItem value="keypad4x4">Teclado 4x4</SelectItem>
+                                  <SelectItem value="motor_vibracao">Motor Vibratório</SelectItem>
+                                  <SelectItem value="rele">Relé</SelectItem>
+                                  <SelectItem value="led">LED</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </label>
                             <label className="space-y-1">
                               <span className="text-xs font-semibold text-muted-foreground">Tipo</span>
-                              <input
-                                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                              <Select
                                 value={component.type || "sensor"}
-                                onChange={(event) => setCompCampo(index, "type", event.target.value)}
-                              />
+                                onValueChange={(value) => setCompCampo(index, "type", value)}
+                              >
+                                <SelectTrigger className="h-9 w-full">
+                                  <SelectValue placeholder="Selecione o tipo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="sensor">Sensor</SelectItem>
+                                  <SelectItem value="atuador">Atuador</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </label>
                           </div>
 
