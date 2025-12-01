@@ -98,7 +98,7 @@ const SENSOR_DEFINITIONS: Record<string, { label: string; fields: string[] }> = 
   apds9960: { label: "APDS9960 (Gesto/Cor)", fields: ["gesto", "proximidade", "luz_ambiente", "cor.r", "cor.g", "cor.b"] },
   keypad4x4: { label: "Teclado 4x4", fields: ["senha_completa"] },
   ir_receiver: { label: "Receptor IR", fields: ["codigo_hex"] },
-  encoder: { label: "Encoder", fields: ["aberto"] },
+  encoder: { label: "Encoder", fields: ["aberto", "pps"] },
   // Genéricos
   sensor: { label: "Sensor Genérico", fields: ["value"] },
 }
