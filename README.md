@@ -70,7 +70,7 @@ Frontend em React + TypeScript (Tailwind + shadcn/ui) para monitoramento e gest�
 
 ### Dependências de Relatórios
 - jspdf, jspdf-autotable (para PDF)  
-- docx (para DOCX)  
+- docx (para DOCX) 
 
 ## Instalação e Execução
 

@@ -5,7 +5,7 @@ export type ComponentConfig = {
   name?: string
   model?: string
   type?: string
-  pin?: number
+  pin?: number | number[]
   interval?: number
   unit?: string
   label?: string
@@ -15,6 +15,8 @@ export type ComponentConfig = {
 export type Device = {
   name: string
   espId: string
+  status?: 'online' | 'offline'
+  lastSeen?: string
   components: ComponentConfig[]
 }
 
@@ -32,8 +34,29 @@ const clampNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(num) ? num : fallback
 }
 
+const parsePin = (value: unknown): number | number[] | undefined => {
+  if (typeof value === "number") return value
+  if (Array.isArray(value)) return value.every(v => typeof v === "number") ? value : undefined
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed) && parsed.every(v => typeof v === "number")) {
+          return parsed
+        }
+      } catch {
+        // ignore error
+      }
+    }
+    const num = Number(trimmed)
+    if (Number.isFinite(num)) return num
+  }
+  return undefined
+}
+
 const sanitizeComponent = (input: Partial<ComponentConfig> | undefined): ComponentConfig => {
-  const pin = clampNumber(input?.pin, 0)
+  const pin = parsePin(input?.pin) ?? 0
   const intervalRaw = clampNumber(input?.interval, NaN)
   const config: { min?: number; max?: number } = {}
 
@@ -71,6 +94,8 @@ const sanitizeDevice = (input: DeviceInput | undefined): Device | null => {
   return {
     name,
     espId,
+    status: input.status as 'online' | 'offline' | undefined,
+    lastSeen: input.lastSeen,
     components,
   }
 }
@@ -146,12 +171,24 @@ const upsertInternal = (device: DeviceInput, originalEspId?: string) => {
   return setAll(next)
 }
 
-const removeInternal = (espId: string) => {
+const removeInternal = async (espId: string) => {
   const id = (espId || "").trim()
   if (!id) return readDevices()
+
+  // Optimistic update
   const current = readDevices()
   const next = current.filter((d) => d.espId !== id)
-  return setAll(next)
+  setAll(next)
+
+  // Call backend
+  try {
+    await fetch(`${API_URL}/api/devices/${id}`, { method: 'DELETE' })
+  } catch (err) {
+    console.error("Failed to delete device from backend:", err)
+    // Optionally revert if needed, but for now we keep optimistic UI
+  }
+
+  return next
 }
 
 /**
@@ -194,7 +231,7 @@ export const deviceRegistry = {
   get: (): Device[] => readDevices(),
   set: (devices: DeviceInput[]) => setAll(devices as Device[]),
   upsert: (device: DeviceInput, originalEspId?: string) => upsertInternal(device, originalEspId),
-  remove: (espId: string) => removeInternal(espId),
+  remove: async (espId: string) => await removeInternal(espId),
   fetchFromBackend,
   subscribe: (listener: (devices: Device[]) => void) => {
     listeners.add(listener)
@@ -236,6 +273,7 @@ export const useDeviceRegistry = () => {
     replaceAll: (list: DeviceInput[]) => deviceRegistry.set(list),
     reset: () => deviceRegistry.set([]),
     refresh: () => deviceRegistry.fetchFromBackend(),
+    refreshDevices: () => deviceRegistry.fetchFromBackend(),
   }
 }
 
