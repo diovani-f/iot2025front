@@ -8,8 +8,7 @@ import Index from "./pages/Index";
 import Devices from "./pages/Devices";
 import DataVisualization from "./pages/DataVisualization";
 import Automation from "./pages/Automation";
-import History from "./pages/History";
-import Reports from "./pages/Reports";
+
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,8 +25,7 @@ const App = () => (
             <Route path="/devices" element={<Devices />} />
             <Route path="/data" element={<DataVisualization />} />
             <Route path="/automation" element={<Automation />} />
-            <Route path="/history" element={<History />} />
-            <Route path="/reports" element={<Reports />} />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>

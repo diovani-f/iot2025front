@@ -1,4 +1,4 @@
-import { Home, Cpu, BarChart3, Settings, History, FileText } from "lucide-react";
+import { Home, Cpu, BarChart3, Settings } from "lucide-react";
 import { NavLink } from "./NavLink";
 import {
   Sidebar,
@@ -18,8 +18,7 @@ const menuItems = [
   { title: "Dispositivos", url: "/devices", icon: Cpu },
   { title: "Dados e Visualização", url: "/data", icon: BarChart3 },
   { title: "Configurações", url: "/automation", icon: Settings },
-  { title: "Histórico", url: "/history", icon: History },
-  { title: "Relatórios", url: "/reports", icon: FileText },
+
 ];
 
 export function AppSidebar() {
