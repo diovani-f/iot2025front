@@ -16,7 +16,6 @@ import {
 const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Dispositivos", url: "/devices", icon: Cpu },
-  { title: "Dados e Visualização", url: "/data", icon: BarChart3 },
   { title: "Configurações", url: "/automation", icon: Settings },
 
 ];

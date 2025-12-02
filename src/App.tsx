@@ -6,7 +6,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import Index from "./pages/Index";
 import Devices from "./pages/Devices";
-import DataVisualization from "./pages/DataVisualization";
 import Automation from "./pages/Automation";
 
 import NotFound from "./pages/NotFound";
@@ -23,7 +22,6 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/devices" element={<Devices />} />
-            <Route path="/data" element={<DataVisualization />} />
             <Route path="/automation" element={<Automation />} />
 
             <Route path="*" element={<NotFound />} />
