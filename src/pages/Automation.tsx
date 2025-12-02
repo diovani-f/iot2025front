@@ -493,20 +493,37 @@ export default function Automation() {
                     <label className="text-xs font-semibold text-muted-foreground">Tipo do Sensor</label>
                     <select
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      value={form.sensorTipo}
+                      value={(() => {
+                        const idx = sensorOptions.findIndex(
+                          (s) =>
+                            s.tipo === form.sensorTipo &&
+                            (Array.isArray(s.pino)
+                              ? JSON.stringify(s.pino) === form.sensorPino
+                              : String(s.pino) === form.sensorPino)
+                        )
+                        return idx === -1 ? "" : idx
+                      })()}
                       onChange={(e) => {
-                        const selected = sensorOptions.find((s) => s.tipo === e.target.value)
-                        setForm((prev) => ({
-                          ...prev,
-                          sensorTipo: e.target.value,
-                          sensorPino: selected ? (Array.isArray(selected.pino) ? JSON.stringify(selected.pino) : String(selected.pino)) : prev.sensorPino,
-                        }))
+                        const idx = Number(e.target.value)
+                        const selected = sensorOptions[idx]
+                        if (selected) {
+                          setForm((prev) => ({
+                            ...prev,
+                            sensorTipo: selected.tipo,
+                            sensorPino: Array.isArray(selected.pino)
+                              ? JSON.stringify(selected.pino)
+                              : String(selected.pino),
+                          }))
+                        } else {
+                          // Caso selecione "Selecione" ou valor inválido
+                          setForm((prev) => ({ ...prev, sensorTipo: "" }))
+                        }
                       }}
                       disabled={!form.deviceId}
                     >
                       <option value="">Selecione</option>
                       {sensorOptions.map((sensor, idx) => (
-                        <option key={idx} value={sensor.tipo}>
+                        <option key={idx} value={idx}>
                           {sensor.label}
                         </option>
                       ))}
@@ -611,20 +628,36 @@ export default function Automation() {
                     <label className="text-xs font-semibold text-muted-foreground">Tipo do Atuador</label>
                     <select
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      value={form.actionTipo}
+                      value={(() => {
+                        const idx = actuatorOptions.findIndex(
+                          (a) =>
+                            a.tipo === form.actionTipo &&
+                            (Array.isArray(a.pino)
+                              ? JSON.stringify(a.pino) === form.actionPino
+                              : String(a.pino) === form.actionPino)
+                        )
+                        return idx === -1 ? "" : idx
+                      })()}
                       onChange={(e) => {
-                        const selected = actuatorOptions.find((a) => a.tipo === e.target.value)
-                        setForm((prev) => ({
-                          ...prev,
-                          actionTipo: e.target.value,
-                          actionPino: selected ? (Array.isArray(selected.pino) ? JSON.stringify(selected.pino) : String(selected.pino)) : prev.actionPino,
-                        }))
+                        const idx = Number(e.target.value)
+                        const selected = actuatorOptions[idx]
+                        if (selected) {
+                          setForm((prev) => ({
+                            ...prev,
+                            actionTipo: selected.tipo,
+                            actionPino: Array.isArray(selected.pino)
+                              ? JSON.stringify(selected.pino)
+                              : String(selected.pino),
+                          }))
+                        } else {
+                          setForm((prev) => ({ ...prev, actionTipo: "" }))
+                        }
                       }}
                       disabled={!form.targetDeviceId}
                     >
                       <option value="">Selecione</option>
                       {actuatorOptions.map((actuator, idx) => (
-                        <option key={idx} value={actuator.tipo}>
+                        <option key={idx} value={idx}>
                           {actuator.label}
                         </option>
                       ))}
@@ -691,49 +724,52 @@ export default function Automation() {
             <Badge variant="outline">{rules.length}</Badge>
           </div>
           <div className="space-y-3">
-            {rules.map((rule) => (
-              <div key={rule._id} className="rounded-lg border border-border/50 p-4 transition-all hover:border-primary/40">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="mb-1 flex items-center gap-2">
-                      <h3 className="font-semibold">{rule.name}</h3>
-                      <Badge variant={rule.enabled ? "default" : "secondary"} className="text-xs">
-                        {rule.enabled ? "ativa" : "inativa"}
-                      </Badge>
+            {rules.map((rule) => {
+              const action = Array.isArray(rule.action) ? rule.action[0] : rule.action
+              return (
+                <div key={rule._id} className="rounded-lg border border-border/50 p-4 transition-all hover:border-primary/40">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="mb-1 flex items-center gap-2">
+                        <h3 className="font-semibold">{rule.name}</h3>
+                        <Badge variant={rule.enabled ? "default" : "secondary"} className="text-xs">
+                          {rule.enabled ? "ativa" : "inativa"}
+                        </Badge>
+                      </div>
+                      <p className="mb-2 text-sm text-muted-foreground">{rule.description || "-"}</p>
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span>Gatilho: {rule.deviceId}</span>
+                        <span>→</span>
+                        <span>Alvo: {rule.targetDeviceId || rule.deviceId}</span>
+                        <span>•</span>
+                        <span>
+                          SE {rule.sensor.tipo} (pino {Array.isArray(rule.sensor.pino) ? JSON.stringify(rule.sensor.pino) : rule.sensor.pino}) {rule.condition.operator} {rule.condition.value}
+                        </span>
+                        <span>•</span>
+                        <span>
+                          ENTÃO {action.tipo} (pino {Array.isArray(action.pino) ? JSON.stringify(action.pino) : action.pino}) = {action.command}
+                        </span>
+                      </div>
                     </div>
-                    <p className="mb-2 text-sm text-muted-foreground">{rule.description || "-"}</p>
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>Gatilho: {rule.deviceId}</span>
-                      <span>→</span>
-                      <span>Alvo: {rule.targetDeviceId || rule.deviceId}</span>
-                      <span>•</span>
-                      <span>
-                        SE {rule.sensor.tipo} (pino {Array.isArray(rule.sensor.pino) ? JSON.stringify(rule.sensor.pino) : rule.sensor.pino}) {rule.condition.operator} {rule.condition.value}
-                      </span>
-                      <span>•</span>
-                      <span>
-                        ENTÃO {rule.action.tipo} (pino {Array.isArray(rule.action.pino) ? JSON.stringify(rule.action.pino) : rule.action.pino}) = {rule.action.command}
-                      </span>
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" className="gap-1" onClick={() => edit(rule)}>
+                        <Edit3 className="h-4 w-4" />
+                        Editar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                        onClick={() => remove(rule)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Remover
+                      </Button>
                     </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="outline" size="sm" className="gap-1" onClick={() => edit(rule)}>
-                      <Edit3 className="h-4 w-4" />
-                      Editar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
-                      onClick={() => remove(rule)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Remover
-                    </Button>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
             {!rules.length && (
               <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
                 Nenhuma regra criada
