@@ -15,12 +15,10 @@ import {
   type Reading,
 } from "@/lib/readings-utils"
 
-// --- Helper Functions for Key Detection ---
 
 const findKeys = (readings: Reading[]) => {
   if (!readings || readings.length === 0) return {}
 
-  // Scan the last 50 readings to find all available keys
   const sample = readings.slice(-50)
   const allKeys = new Set<string>()
 
@@ -33,7 +31,6 @@ const findKeys = (readings: Reading[]) => {
 
   const findAll = (regex: RegExp) => normalizedKeys.filter(k => regex.test(k.lower)).map(k => k.original)
 
-  // Helper to exclude keys already found in other categories if needed, but for now we allow overlap if regexes are distinct
 
   const temps = findAll(/(temp|temperatura|ds18|dht|bme|bmp)/).filter(k => !/(hum|umid)/i.test(k))
   const hums = findAll(/(hum|umid)/)
@@ -102,7 +99,6 @@ export default function DataVisualization() {
   const [statusMap, setStatusMap] = useState<Record<string, DeviceStatus>>({})
   const [loadingStatus, setLoadingStatus] = useState(false)
 
-  // State for detected keys to dynamically show tabs
   const [detectedKeys, setDetectedKeys] = useState<ReturnType<typeof findKeys>>({})
 
   useEffect(() => {
@@ -218,17 +214,15 @@ export default function DataVisualization() {
       const processed: Record<string, any> = {
         time: formatClock(ts),
         timestamp: ts,
-        ...flat // Spread original values
+        ...flat
       }
 
-      // Ensure numeric values for detected keys
       Object.values(detectedKeys).flat().forEach(key => {
         if (key && flat[key] !== undefined) {
           processed[key] = numericValue(flat[key])
         }
       })
 
-      // Keep raw values for non-numeric stuff like gestures
       if (detectedKeys.gesture) {
         detectedKeys.gesture.forEach(k => {
           if (k) processed[k] = flat[k]

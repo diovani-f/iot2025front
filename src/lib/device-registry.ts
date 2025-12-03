@@ -45,9 +45,7 @@ const parsePin = (value: unknown): number | number[] | undefined => {
         if (Array.isArray(parsed) && parsed.every(v => typeof v === "number")) {
           return parsed
         }
-      } catch {
-        // ignore error
-      }
+      } catch {}
     }
     const num = Number(trimmed)
     if (Number.isFinite(num)) return num
@@ -175,25 +173,19 @@ const removeInternal = async (espId: string) => {
   const id = (espId || "").trim()
   if (!id) return readDevices()
 
-  // Optimistic update
   const current = readDevices()
   const next = current.filter((d) => d.espId !== id)
   setAll(next)
 
-  // Call backend
   try {
     await fetch(`${API_URL}/api/devices/${id}`, { method: 'DELETE' })
   } catch (err) {
     console.error("Failed to delete device from backend:", err)
-    // Optionally revert if needed, but for now we keep optimistic UI
   }
 
   return next
 }
 
-/**
- * Fetch devices from backend and merge with local storage
- */
 const fetchFromBackend = async (): Promise<Device[]> => {
   try {
     const response = await fetch(`${API_URL}/api/devices`)
@@ -203,20 +195,16 @@ const fetchFromBackend = async (): Promise<Device[]> => {
     }
     const backendDevices = await response.json() as DeviceInput[]
 
-    // Merge backend devices with local storage
     const localDevices = readDevices()
     const merged = new Map<string, Device>()
 
-    // Add local devices first
     localDevices.forEach(device => merged.set(device.espId, device))
 
-    // Add/update with backend devices
     const sanitizedBackend = normalizeList(backendDevices)
     sanitizedBackend.forEach(device => merged.set(device.espId, device))
 
     const result = Array.from(merged.values())
 
-    // Update local storage with merged data
     writeDevices(result)
     emit(result)
 
@@ -250,7 +238,6 @@ export const useDeviceRegistry = () => {
     ensureStorageListener()
     const unsubscribe = deviceRegistry.subscribe(setDevices)
 
-    // Load devices from backend on mount
     const loadDevices = async () => {
       setLoading(true)
       try {

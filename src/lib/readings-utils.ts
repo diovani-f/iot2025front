@@ -30,9 +30,6 @@ export const pickTimestamp = (source: unknown, fallback = 0): number => {
     let parsed = typeof value === "string" ? Date.parse(value) : typeof value === "number" ? value : undefined
 
     if (Number.isFinite(parsed)) {
-      // Heuristic: If timestamp is small (e.g. < 1973), assume it's seconds and convert to ms
-      // 1e11 ms is roughly year 1973. 
-      // Current timestamps in seconds are ~1.7e9, which is << 1e11.
       if (parsed! < 1e11 && parsed! > 0) {
         parsed = parsed! * 1000
       }

@@ -78,15 +78,12 @@ const parsePinInput = (value: string): number | number[] => {
       if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number")) {
         return parsed
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
   const num = Number(trimmed)
   return isNaN(num) ? 0 : num
 }
 
-// Definições estáticas do que o Hardware/Backend suporta
 const SENSOR_DEFINITIONS: Record<string, { label: string; fields: string[] }> = {
   dht11: { label: "DHT11 (Temp/Umid)", fields: ["temperatura_c", "umidade_pct"] },
   ds18b20: { label: "DS18B20 (Temp)", fields: ["temperatura_c"] },
@@ -99,7 +96,6 @@ const SENSOR_DEFINITIONS: Record<string, { label: string; fields: string[] }> = 
   keypad4x4: { label: "Teclado 4x4", fields: ["senha_completa"] },
   ir_receiver: { label: "Receptor IR", fields: ["codigo_hex"] },
   encoder: { label: "Encoder", fields: ["aberto", "pps"] },
-  // Genéricos
   sensor: { label: "Sensor Genérico", fields: ["value"] },
 }
 
@@ -125,7 +121,6 @@ export default function Automation() {
   const [availableFields, setAvailableFields] = useState<string[]>([])
   const [loadingFields, setLoadingFields] = useState(false)
 
-  // buscar campos disponíveis do sensor selecionado
   useEffect(() => {
     if (!form.deviceId || !form.sensorTipo) {
       setAvailableFields([])
@@ -138,7 +133,6 @@ export default function Automation() {
         const response = await fetch(`${API_URL}/api/readings/${encodeURIComponent(form.deviceId)}/latest`)
         if (response.ok) {
           const data = await response.json()
-          // extrair campos numéricos do payload
           const fields: string[] = []
           const extractFields = (obj: any, prefix = "") => {
             for (const key in obj) {
@@ -159,20 +153,15 @@ export default function Automation() {
       }
     }
 
-    // Se temos uma definição estática para este sensor, usamos/mesclamos
     const def = SENSOR_DEFINITIONS[form.sensorTipo.toLowerCase()]
     if (def) {
-      // Se quisermos forçar apenas os estáticos:
       setAvailableFields(def.fields)
-      // Se quisermos mesclar (estático + dinâmico), descomente abaixo e ajuste a lógica do fetchFields
-      // mas o usuário pediu "o que o back espera", então estático é mais seguro/limpo.
       return
     }
 
     fetchFields()
   }, [form.deviceId, form.sensorTipo])
 
-  // carregar regras do backend
   const loadRules = async () => {
     setLoading(true)
     try {
@@ -193,7 +182,6 @@ export default function Automation() {
 
   useEffect(() => {
     loadRules()
-    // Poll devices every 5 seconds to update status
     const interval = setInterval(() => {
       refreshDevices()
     }, 5000)
@@ -213,7 +201,7 @@ export default function Automation() {
     setForm({
       name: rule.name,
       deviceId: rule.deviceId,
-      targetDeviceId: rule.targetDeviceId || rule.deviceId, // fallback for old rules
+      targetDeviceId: rule.targetDeviceId || rule.deviceId,
       sensorTipo: rule.sensor.tipo,
       sensorPino: Array.isArray(rule.sensor.pino) ? JSON.stringify(rule.sensor.pino) : String(rule.sensor.pino),
       sensorField: rule.sensor.field,
@@ -296,14 +284,12 @@ export default function Automation() {
     try {
       let response
       if (editingId) {
-        // editar regra existente
         response = await fetch(`${API_URL}/api/rules/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         })
       } else {
-        // criar nova regra
         response = await fetch(`${API_URL}/api/rules`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -332,11 +318,9 @@ export default function Automation() {
     }, 5000)
   }
 
-  // get unique sensor and actuator components from devices
   const sensorOptions: Array<{ tipo: string; pino: number | number[]; label: string }> = []
   const actuatorOptions: Array<{ tipo: string; pino: number | number[]; label: string }> = []
 
-  // Populate Sensor Options (from Trigger Device)
   if (form.deviceId) {
     const device = devices.find((d) => d.espId === form.deviceId)
     if (device) {
@@ -345,7 +329,6 @@ export default function Automation() {
         const tipo = (comp.type || "").toLowerCase()
         const modelo = (comp.model || "").toLowerCase()
 
-        // lista de modelos conhecidos de sensores
         const modelosSensores = ["dht11", "dht22", "ds18b20", "hcsr04", "mpu6050", "apds9960", "bmp280", "ldr", "pir", "joystick"]
         const isSensorPorModelo = modelosSensores.some(m => modelo.includes(m))
         const isSensor = tipo === "sensor" || isSensorPorModelo
@@ -361,7 +344,6 @@ export default function Automation() {
     }
   }
 
-  // Populate Actuator Options (from Target Device)
   if (form.targetDeviceId) {
     const device = devices.find((d) => d.espId === form.targetDeviceId)
     if (device) {
@@ -370,7 +352,6 @@ export default function Automation() {
         const tipo = (comp.type || "").toLowerCase()
         const modelo = (comp.model || "").toLowerCase()
 
-        // lista de modelos conhecidos de atuadores
         const modelosAtuadores = ["led", "rele", "motor", "motor_vibracao", "buzzer", "servo", "relay"]
         const isAtuadorPorModelo = modelosAtuadores.some(m => modelo.includes(m))
 
@@ -515,7 +496,6 @@ export default function Automation() {
                               : String(selected.pino),
                           }))
                         } else {
-                          // Caso selecione "Selecione" ou valor inválido
                           setForm((prev) => ({ ...prev, sensorTipo: "" }))
                         }
                       }}
@@ -559,7 +539,7 @@ export default function Automation() {
                   </div>
                 </div>
               </div>
-
+              
               {/* Condition Section */}
               <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
                 <h3 className="font-semibold">Condição</h3>
@@ -592,7 +572,7 @@ export default function Automation() {
                   </div>
                 </div>
               </div>
-
+              
               {/* Action Section */}
               <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
                 <h3 className="flex items-center gap-2 font-semibold">
