@@ -5,6 +5,8 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianG
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {Select, SelectTrigger, SelectValue, SelectContent, SelectItem} from "@/components/ui/select"
+
 import { API_URL } from "@/lib/api"
 import { useDeviceRegistry } from "@/lib/device-registry"
 import {
@@ -142,6 +144,19 @@ export default function Dashboard() {
       .map(([key]) => key)
   }, [history])
 
+  const sensorTypes: string[] = useMemo(() => {
+    if (!history.length) return []
+
+    const typesSet = new Set<string>()
+    history.forEach((reading) => {
+      if (reading.tipo && typeof reading.tipo === "string") {
+        typesSet.add(reading.tipo)
+      }
+    })
+
+    return Array.from(typesSet)
+  }, [history])
+
   useEffect(() => {
     if (!metricKey && numericKeys.length) {
       setMetricKey(numericKeys[0])
@@ -199,16 +214,20 @@ export default function Dashboard() {
               Acompanhe o status dos dispositivos e as ultimas leituras sem depender de listagens do backend
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {devices.map((device) => (
-              <Button
-                key={device.espId}
-                variant={device.espId === selectedEsp ? "default" : "outline"}
-                onClick={() => setSelectedEsp(device.espId)}
-              >
-                {device.name}
-              </Button>
-            ))}
+          <div className="w-60">
+            <Select value={selectedEsp} onValueChange={setSelectedEsp}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um dispositivo" />
+              </SelectTrigger>
+
+              <SelectContent>
+                {devices.map((device) => (
+                  <SelectItem key={device.espId} value={device.espId}>
+                    {device.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -219,27 +238,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-primary/20 bg-card/60 backdrop-blur">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Dispositivos cadastrados</CardTitle>
-              <Database className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{devices.length}</div>
-              <p className="text-xs text-muted-foreground">Total no registro local</p>
-            </CardContent>
-          </Card>
-          <Card className="border-primary/20 bg-card/60 backdrop-blur">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Online agora</CardTitle>
-              <Wifi className="h-4 w-4 text-emerald-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{onlineCount}</div>
-              <p className="text-xs text-muted-foreground">Atualizado {lastStatusRefresh ? formatClock(lastStatusRefresh) : "-"}</p>
-            </CardContent>
-          </Card>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">          
           <Card className="border-primary/20 bg-card/60 backdrop-blur">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Metricas disponiveis</CardTitle>
@@ -248,6 +247,25 @@ export default function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold">{numericKeys.length}</div>
               <p className="text-xs text-muted-foreground">Detectadas a partir das leituras</p>
+            </CardContent>
+          </Card>
+          <Card className="border-primary/20 bg-card/60 backdrop-blur">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Sensores Conectados</CardTitle>
+              <Database className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto pr-1">
+                {sensorTypes.length > 0 ? (
+                  sensorTypes.map((type) => (
+                    <Badge key={type} variant="secondary" className="px-2 py-1 text-xs whitespace-nowrap">
+                      {type}
+                    </Badge>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nenhum sensor detectado.</p>
+                )}
+              </div>
             </CardContent>
           </Card>
           <Card className="border-primary/20 bg-card/60 backdrop-blur">
@@ -266,7 +284,9 @@ export default function Dashboard() {
           <Card className="border-primary/30 bg-card/60 backdrop-blur">
             <CardHeader className="flex items-center justify-between gap-2">
               <div>
-                <CardTitle>Evolucao temporal</CardTitle>
+                <CardTitle className="text-center w-full">
+                  Evolução temporal
+                </CardTitle>
                 <CardDescription>Selecione uma metrica para visualizar a tendencia recente</CardDescription>
               </div>
               <select
@@ -323,49 +343,6 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
-
-        <Card className="border-primary/30 bg-card/60 backdrop-blur">
-          <CardHeader className="flex items-center justify-between">
-            <div>
-              <CardTitle>Dispositivos monitorados</CardTitle>
-              <CardDescription>Informacoes de presenca obtidas via /api/latestReading</CardDescription>
-            </div>
-            <Badge variant="outline" className="gap-1">
-              <Thermometer className="h-3 w-3" /> atualizacao automatica
-            </Badge>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {devices.map((device) => {
-              const status = statusMap[device.espId]
-              const online = status?.online ?? false
-              return (
-                <div key={device.espId} className="rounded-lg border border-border/40 bg-background/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-muted-foreground">{device.espId}</div>
-                      <div className="text-lg font-bold">{device.name}</div>
-                    </div>
-                    <Badge variant={online ? "default" : "outline"} className={online ? "bg-emerald-500/20 text-emerald-700" : "text-muted-foreground"}>
-                      {online ? "online" : "offline"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 text-xs text-muted-foreground">
-                    Ultima leitura: {status?.lastSeen ? formatDateTime(status.lastSeen) : "-"}
-                  </div>
-                  <div className="mt-3 space-y-2 text-sm">
-                    {(status?.summary || []).map((item) => (
-                      <div key={item.label} className="flex items-center justify-between rounded border border-border/40 px-2 py-1">
-                        <span className="text-muted-foreground">{item.label}</span>
-                        <span className="font-medium">{item.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-            {!devices.length && <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">Nenhum dispositivo cadastrado</div>}
-          </CardContent>
-        </Card>
       </div>
     </div>
   )
